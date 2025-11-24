@@ -40,59 +40,16 @@ It proves I can build systems that don’t just run…
 
 ```mermaid
 flowchart LR
-    subgraph Client
-        A[Start Workflow Request]
-    end
 
-    subgraph API[NestJS API\n(Control Plane)]
-        B[Persist Workflow\n& Steps]
-        C[Expose Admin APIs]
-    end
+    A[Client Request] --> B[NestJS API - Control Plane]
+    B --> C[(Postgres - Source of Truth)]
+    C --> D[Scheduler]
+    D --> E[Redis + BullMQ - Queues]
+    E --> F[Worker - Task Executor]
+    F --> C
+    C --> G[Reconciler - Timers & Recovery]
+    B --> H[Next.js Dashboard]
 
-    subgraph DB[Postgres\nSource of Truth]
-        D[(Workflows)]
-        E[(Workflow Steps)]
-        F[(Timers)]
-        G[(Idempotency Keys)]
-        H[(History Events)]
-    end
-
-    subgraph Scheduler[Scheduler Service]
-        I[Expand Workflow DSL]
-        J[Enqueue First Step]
-    end
-
-    subgraph Queue[Redis + BullMQ]
-        K[(Job Queue)]
-        L[(Delayed Jobs)]
-    end
-
-    subgraph Worker[Distributed Workers\n(Data Plane)]
-        M[Claim Step\n(DB Txn)]
-        N[Run Handler]
-        O[Write Result / Retry / Fail]
-        P[Enqueue Next Step]
-    end
-
-    subgraph Reconciler[Reconciliation Loop]
-        Q[Recover Missed Timers]
-        R[Fix Orphaned Steps]
-    end
-
-    subgraph Dashboard[Next.js Dashboard]
-        S[Workflow Timeline]
-        T[Retry/Pause/Cancel]
-    end
-
-    A --> B --> D
-    B --> Scheduler
-    Scheduler --> I --> J --> K
-    K --> Worker
-    Worker --> M --> N --> O --> P --> K
-    Worker --> E
-    L --> Worker
-    DB <-- Reconciler
-    API --> Dashboard
 ```
 
 ---
