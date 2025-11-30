@@ -1,40 +1,29 @@
-import type { Config } from 'drizzle-kit';
-import { config } from 'dotenv';
-import { join } from 'path';
-import { existsSync } from 'fs';
+import type { Config } from "drizzle-kit";
+import { config } from "dotenv";
+import { join } from "path";
+import { existsSync } from "fs";
 
-// Load .env file for drizzle-kit commands - check multiple locations
-// 1. packages/db/.env (package-specific)
-// 2. packages/.env (monorepo packages level)
-// 3. Root .env (monorepo root)
-// 4. Current working directory (fallback)
-const packageDir = join(__dirname, '.');
+// Load .env from multiple possible locations
+const packageDir = __dirname;
 const possiblePaths = [
-  join(packageDir, '.env'),           // packages/db/.env
-  join(packageDir, '..', '.env'),     // packages/.env
-  join(packageDir, '..', '..', '.env'), // root/.env
+  join(packageDir, ".env"),
+  join(packageDir, "..", ".env"),
+  join(packageDir, "..", "..", ".env"),
 ];
 
-let envLoaded = false;
-for (const envPath of possiblePaths) {
-  if (existsSync(envPath)) {
-    config({ path: envPath });
-    envLoaded = true;
+for (const p of possiblePaths) {
+  if (existsSync(p)) {
+    config({ path: p });
     break;
   }
 }
 
-if (!envLoaded) {
-  // Fallback to default behavior (current working directory)
-  config();
-}
-
+// Drizzle config
 export default {
-  schema: './src/schema/index.ts',
-  out: './drizzle',
-  dialect: 'postgresql',
+  schema: "./src/schema/index.ts",
+  out: "./drizzle",
+  driver: "pg", // ✔ Correct
   dbCredentials: {
-    url: process.env.DATABASE_URL || '',
+    connectionString: process.env.DATABASE_URL || "", // ✔ Correct key
   },
 } satisfies Config;
-

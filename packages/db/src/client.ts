@@ -1,17 +1,17 @@
+import { Pool } from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import type { PoolClient } from 'pg';
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+
 import { config } from 'dotenv';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
 import { join } from 'path';
 import { existsSync } from 'fs';
-import * as schema from './schema';
 
-// Only load .env in development - production should use environment variables
-// This prevents accidentally loading .env files in production
 if (process.env.NODE_ENV !== 'production') {
   const packageDir = join(__dirname, '..');
   const possiblePaths = [
-    join(packageDir, '.env'),           // packages/db/.env
-    join(packageDir, '..', '.env'),     // packages/.env
+    join(packageDir, '.env'), // packages/db/.env
+    join(packageDir, '..', '.env'), // packages/.env
     join(packageDir, '..', '..', '.env'), // root/.env
   ];
 
@@ -31,67 +31,36 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const connectionString = process.env.DATABASE_URL;
-
 if (!connectionString) {
-  throw new Error(
-    'DATABASE_URL environment variable is not set. ' +
-    'Please set it in your environment or .env file (development only).'
-  );
+  throw new Error('DATABASE_URL is not set in environment');
 }
 
-// Validate connection string format (basic check)
-if (!connectionString.startsWith('postgres://') && !connectionString.startsWith('postgresql://')) {
-  throw new Error(
-    'DATABASE_URL must be a valid PostgreSQL connection string starting with postgres:// or postgresql://'
-  );
-}
-
-// Connection pool configuration for production safety
-// - max: Maximum number of connections (default: 10)
-// - idle_timeout: Close idle connections after this many seconds (default: 30)
-// - connect_timeout: Connection timeout in seconds (default: 30)
-// - prepare: false is required for transaction pool mode
-const client = postgres(connectionString, {
-  prepare: false,
-  max: parseInt(process.env.DB_MAX_CONNECTIONS || '10', 10),
-  idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || '30', 10),
-  connect_timeout: parseInt(process.env.DB_CONNECT_TIMEOUT || '30', 10),
-  // Enable SSL in production if not explicitly disabled
-  ssl: process.env.DB_SSL === 'false' ? false : process.env.NODE_ENV === 'production' ? 'require' : undefined,
+export const pool = new Pool({
+  connectionString,
+  // tune as needed
+  max: Number(process.env.DB_MAX_CLIENTS ?? 10),
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
 });
 
-const globalForDrizzle = globalThis as unknown as {
-  db: ReturnType<typeof drizzle> | undefined;
-};
+export const db = drizzle(pool);
 
-export const db =
-  globalForDrizzle.db ??
-  drizzle(client, {
-    schema,
-    logger: process.env.NODE_ENV === 'development',
-  });
-
-if (process.env.NODE_ENV !== 'production') globalForDrizzle.db = db;
-
-/**
- * Gracefully close the database connection.
- * Call this when shutting down the application to ensure connections are properly closed.
- * Safe to call multiple times - will only close once.
- */
-export async function closeDb(): Promise<void> {
-  if (globalForDrizzle.db) {
-    try {
-      await client.end();
-    } catch (error) {
-      // Ignore errors if connection is already closed
-      if (error instanceof Error && !error.message.includes('Connection ended')) {
-        throw error;
-      }
-    } finally {
-      globalForDrizzle.db = undefined;
-    }
+// `withTransaction` wrapper: accepts a callback that receives a transactional db instance.
+// Transaction wrapper
+export async function withTransaction<T>(cb: (tx: NodePgDatabase) => Promise<T>): Promise<T> {
+  const client: PoolClient = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const txDb: NodePgDatabase = drizzle(client);
+    const result = await cb(txDb);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
   }
 }
 
-// Export the postgres client for advanced usage if needed
-export { client };
+export type { NodePgDatabase };

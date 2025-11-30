@@ -18,13 +18,14 @@
   },
   "dependencies": {
     "dotenv": "^16.3.1",
-    "drizzle-orm": "^0.29.0",
+    "drizzle-orm": "^0.29.5",
+    "pg": "^8.16.3",
     "postgres": "^3.4.3"
   },
   "devDependencies": {
-    "drizzle-kit": "^0.20.0",
+    "@types/pg": "^8.15.6",
+    "drizzle-kit": "^0.20.18",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"
   }
 }
-
