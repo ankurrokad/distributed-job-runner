@@ -9,17 +9,21 @@
     "dev": "tsc --watch",
     "lint": "eslint \"src/**/*.ts\"",
     "type-check": "tsc --noEmit",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio",
-    "db:push": "prisma db push",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "db:test": "tsx src/test-connection.ts",
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@prisma/client": "^5.7.1"
+    "dotenv": "^16.3.1",
+    "drizzle-orm": "^0.29.0",
+    "postgres": "^3.4.3"
   },
   "devDependencies": {
-    "prisma": "^5.7.1",
+    "drizzle-kit": "^0.20.0",
+    "tsx": "^4.7.0",
     "typescript": "^5.3.3"
   }
 }
