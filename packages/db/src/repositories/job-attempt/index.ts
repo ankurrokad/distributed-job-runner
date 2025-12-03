@@ -15,6 +15,33 @@ export class JobAttemptRepository extends BaseRepository<
     super(db, jobAttempt, 'id');
   }
 
-  // Add job-attempt-specific methods here
+  async createAttempt(
+    jobId: string,
+    attempt: number,
+    workflowId?: string,
+    stepId?: string
+  ): Promise<JobAttemptSelect> {
+    return this.create({
+      jobId,
+      attempt,
+      workflowId: workflowId || null,
+      stepId: stepId || null,
+      status: 'RUNNING',
+    } as JobAttemptInsert);
+  }
+
+  async finishAttempt(
+    id: string,
+    status: string,
+    error?: string,
+    result?: Record<string, any>
+  ): Promise<JobAttemptSelect | null> {
+    return this.updateById(id, {
+      status,
+      error: error || null,
+      result: result || null,
+      finishedAt: new Date(),
+    });
+  }
 }
 
