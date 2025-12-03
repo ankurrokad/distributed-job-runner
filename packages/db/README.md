@@ -24,10 +24,25 @@ This pattern is used to guarantee that complex operations (for example: creating
 
 ### Schema and repositories
 
-- The `schema` export contains all Drizzle table definitions for the job runner (workflows, workflow steps, timers, job attempts, histories, idempotency keys, etc.).
-- Concrete repositories (e.g. workflow, workflow-history, job-attempt, timer) are built on top of a shared `BaseRepository`.
+- The `schema` export contains all Drizzle table definitions for the job runner:
+  - **Engine tables**: workflows, workflow steps, workflow history, timers, job attempts, idempotency keys
+  - **ETL domain tables**: batch, batch_chunk, processed_row, error_row
+- Concrete repositories are built on top of a shared `BaseRepository` and provide both CRUD operations and domain-specific methods.
 
 The **design goal** is that higher‑level packages never construct ad‑hoc SQL – they talk to repositories that encode domain concepts and invariants.
+
+#### Repository Methods
+
+Repositories extend `BaseRepository` with specialized domain methods:
+
+- **WorkflowRepository**: `markRunning()`, `markCompleted()`, `markFailed()`, `pause()`, `resume()`, `incrementAttempts()`, `isWorkflowDone()`
+- **WorkflowStepRepository**: `createStep()`, `claimStep()` (transactional), `markStepSuccess()`, `markStepFailed()`, `findPendingSteps()`, `countStepsByStatus()`, `findStepsInParallelGroup()`, `findNextRunnableStep()`
+- **WorkflowHistoryRepository**: `log()`, `getTimeline()`
+- **TimerRepository**: `createTimer()`, `findDueTimers()`, `markFired()`, `cancelTimersForTarget()`
+- **BatchRepository**: `setStatus()`, `incrementProcessedCount()`, `incrementErrorCount()`, `getRawData()`
+- **BatchChunkRepository**: `createChunk()`, `markChunkStatus()`, `findChunksForBatch()`, `countChunksByStatus()`, `findChunkByStep()`
+- **ProcessedRowRepository** / **ErrorRowRepository**: `insertMany()`, `countByBatch()`
+- **JobAttemptRepository**: `createAttempt()`, `finishAttempt()`
 
 ### BaseRepository: how it works
 
@@ -45,8 +60,20 @@ Soft‑delete support is built in:
 
 ### How other packages use this
 
-- **Queue / workers**: when a job is dequeued, its consumer typically uses repositories from this package to read and update workflow state, append history rows, and mark steps as completed or failed inside a transaction.
-- **Timers / scheduling**: timer processing code can atomically move timers and update workflow status using `withTransaction` so the same logical “event” is consistently reflected across tables.
+- **Queue / workers**: when a job is dequeued, its consumer typically uses repositories to:
+  - Claim workflow steps using `claimStep()` (which atomically checks status and updates)
+  - Update workflow state (`markRunning()`, `markCompleted()`, `markFailed()`)
+  - Log events via `WorkflowHistoryRepository.log()`
+  - Track job attempts with `JobAttemptRepository`
+  - All within transactions to ensure consistency
 
-In short, this package provides the **durable backbone** of the system: every job execution, retry, and workflow transition eventually becomes a sequence of repository calls and transactions defined here.
+- **Timers / scheduling**: timer processing code uses `TimerRepository.findDueTimers()` to discover timers ready to fire, then atomically updates timers and workflow status using `withTransaction`.
+
+- **ETL workers**: batch processing workers use:
+  - `BatchRepository` to manage batch lifecycle and retrieve raw data
+  - `BatchChunkRepository` to map chunks to workflow steps for fan-out/fan-in patterns
+  - `ProcessedRowRepository.insertMany()` and `ErrorRowRepository.insertMany()` for bulk inserts
+  - `countByBatch()` methods to track progress
+
+In short, this package provides the **durable backbone** of the system: every job execution, retry, workflow transition, and batch operation eventually becomes a sequence of repository calls and transactions defined here.
 
