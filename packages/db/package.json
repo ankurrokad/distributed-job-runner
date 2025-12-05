@@ -17,6 +17,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@repo/queue": "workspace:^",
     "dotenv": "^16.3.1",
     "drizzle-orm": "^0.29.5",
     "pg": "^8.16.3",

@@ -134,6 +134,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@repo/queue':
+        specifier: workspace:^
+        version: link:../queue
       dotenv:
         specifier: ^16.3.1
         version: 16.6.1

@@ -1,34 +1,81 @@
-import type { WorkflowSelect } from '../repositories/workflow';
+import { Producer } from '@repo/queue';
+import { WorkflowHistoryRepository, WorkflowRepository } from '../repositories';
+import { WorkflowStepService } from './workflow-step.service';
+import { withTransaction } from '../client';
 
 export class WorkflowService {
-  async startWorkflow(type: string, input: Record<string, any>): Promise<WorkflowSelect> {
-    // TODO: Implement
-    throw new Error('Not implemented');
+  constructor(
+    private readonly workflowRepo: WorkflowRepository,
+    private readonly stepService: WorkflowStepService,
+    private readonly historyRepo: WorkflowHistoryRepository,
+    private readonly producer: Producer
+  ) {}
+
+  /* -------------------------------------------------------
+     startWorkflow — create workflow + initial step + enqueue
+  ------------------------------------------------------- */
+  async startWorkflow(type: string, input: any) {
+    return withTransaction(async () => {
+      const workflow = await this.workflowRepo.create({
+        type,
+        input,
+        status: 'PENDING',
+      });
+
+      // create step
+      const step = await this.stepService.createStep(workflow.id, 'ingest_batch', {
+        batchId: input.batchId,
+      });
+
+      // log
+      await this.historyRepo.create({
+        workflowId: workflow.id,
+        eventType: 'WORKFLOW_STARTED',
+        payload: {},
+      });
+
+      // enqueue job (MATCHING your payload!)
+      await this.producer.enqueue({
+        workflowId: workflow.id,
+        stepId: step.id,
+        data: step.payload,
+      });
+
+      return workflow;
+    });
   }
 
-  async markWorkflowRunning(workflowId: string): Promise<WorkflowSelect | null> {
-    // TODO: Implement
-    throw new Error('Not implemented');
+  /* -------------------------------------------------------
+     markWorkflowFailed
+  ------------------------------------------------------- */
+  async markWorkflowFailed(workflowId: string, error: string) {
+    await this.workflowRepo.updateById(workflowId, {
+      status: 'FAILED',
+      failedAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    await this.historyRepo.create({
+      workflowId,
+      eventType: 'WORKFLOW_FAILED',
+      payload: { error },
+    });
   }
 
-  async markWorkflowCompleted(workflowId: string): Promise<WorkflowSelect | null> {
-    // TODO: Implement
-    throw new Error('Not implemented');
-  }
+  /* -------------------------------------------------------
+     markWorkflowCompleted
+  ------------------------------------------------------- */
+  async markWorkflowCompleted(workflowId: string) {
+    await this.workflowRepo.updateById(workflowId, {
+      status: 'SUCCESS',
+      completedAt: new Date(),
+      updatedAt: new Date(),
+    });
 
-  async markWorkflowFailed(workflowId: string, error: string): Promise<WorkflowSelect | null> {
-    // TODO: Implement
-    throw new Error('Not implemented');
-  }
-
-  async pauseWorkflow(workflowId: string): Promise<WorkflowSelect | null> {
-    // TODO: Implement
-    throw new Error('Not implemented');
-  }
-
-  async resumeWorkflow(workflowId: string): Promise<WorkflowSelect | null> {
-    // TODO: Implement
-    throw new Error('Not implemented');
+    await this.historyRepo.create({
+      workflowId,
+      eventType: 'WORKFLOW_COMPLETED',
+      payload: {},
+    });
   }
 }
-
